@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    
+    <script src="pkg/nt4_wasm.js"></script>
+    <script>
+        async function run(name, ip) {
+            const { _nt4_start } = wasm_bindgen;
+            await wasm_bindgen('./pkg/nt4_wasm_bg.wasm');
+            await _nt4_start(name, ip);
+        }
+
+        run("webwoo", "localhost").then(() => {
+            const { sub_topic_list, addEventListener } = wasm_bindgen;
+            addEventListener("announce", (name, type) => {
+                console.log(name, type);
+            });
+            sub_topic_list("/");
+        });
+    </script>
+</body>
+</html>
