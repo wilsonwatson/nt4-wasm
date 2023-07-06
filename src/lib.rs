@@ -1,7 +1,6 @@
-use std::{cell::RefCell, fmt::Debug, future::Future, rc::Rc, collections::HashMap};
+use std::{cell::RefCell, collections::HashMap, fmt::Debug, future::Future, rc::Rc};
 
 use serde::{ser::Error, Deserialize, Serialize};
-use serde_json::Value;
 use wasm_bindgen::prelude::*;
 use web_sys::{ErrorEvent, MessageEvent, WebSocket};
 
@@ -9,7 +8,7 @@ thread_local! {
     static STATE: Rc<RefCell<State>> = Rc::new(RefCell::new(State::new()));
 }
 
-type Uidty = i32;
+type Uidty = i64;
 
 #[derive(Debug, Deserialize, Serialize)]
 struct Properties {
@@ -87,8 +86,8 @@ struct State {
     announce_callbacks: Vec<js_sys::Function>,
     unannounce_callbacks: Vec<js_sys::Function>,
     properties_callbacks: Vec<js_sys::Function>,
-    sub_callbacks: HashMap<String, js_sys::Function>,
-    topic_names: HashMap<i64, String>,
+    sub_callbacks: HashMap<i64, js_sys::Function>,
+    topic_names: HashMap<String, i64>,
 }
 
 // As described here
@@ -179,6 +178,14 @@ impl State {
                         });
                         log::trace!("time synced: now = {}, server = {}", new_time, server_time);
                     } else {
+                        log::trace!("data in {}", data.0);
+                        if let Ok(value) = serde_wasm_bindgen::to_value(&data.3) {
+                            STATE.with(|st| {
+                                if let Some(f) = st.borrow_mut().sub_callbacks.get(&data.0) {
+                                    _ = f.call1(&JsValue::null(), &value);
+                                }
+                            })
+                        }
                     }
                 }
             } else if let Ok(text) = e.data().dyn_into::<js_sys::JsString>() {
@@ -186,20 +193,23 @@ impl State {
                 let data = serde_json::from_str::<Vec<TextFrame>>(&data);
                 if let Ok(data) = data {
                     for frame in data {
+                        println!("text {:?}", &frame);
                         match frame {
-                            TextFrame::Announce { name, id, ty, pubuid, properties } => {
-                                STATE.with(|st| {
-
-                                    st.borrow_mut().topic_names.insert(id, name.clone());
-
-                                    let this = JsValue::null();
-                                    for callback in st.borrow().announce_callbacks.iter() {
-                                        _ = callback.call2(&this, &JsValue::from(&name), &JsValue::from(&ty));
-                                    }
-                                })
-                            },
-                            TextFrame::Unannounce { name, id } => todo!(),
-                            TextFrame::Properties { name, ack } => todo!(),
+                            TextFrame::Announce {
+                                name,
+                                id,
+                                ty,
+                                ..
+                            } => STATE.with(|st| {
+                                st.borrow_mut().topic_names.insert(name.clone(), id);
+                                for callback in st.borrow().announce_callbacks.iter() {
+                                    _ = callback.call2(
+                                        &JsValue::null(),
+                                        &JsValue::from(&name),
+                                        &JsValue::from(&ty),
+                                    );
+                                }
+                            }),
                             _ => {}
                         }
                     }
@@ -308,31 +318,69 @@ pub async fn _nt4_start(name: String, x: &JsValue) {
 
 #[wasm_bindgen(js_name = addEventListener)]
 pub fn add_event_listener(name: &str, f: js_sys::Function) {
+    log::trace!("add_event_listener");
     match name {
         "announce" => {
             STATE.with(|st| {
                 st.borrow_mut().announce_callbacks.push(f);
             });
-        },
+        }
         "unannounce" => {
             STATE.with(|st| {
                 st.borrow_mut().unannounce_callbacks.push(f);
             });
-        },
+        }
         "properties" => {
             STATE.with(|st| {
                 st.borrow_mut().properties_callbacks.push(f);
             });
-        },
+        }
         x => log::warn!("Unrecognized event {:?}", x),
     }
 }
 
+fn newuid() -> i64 {
+    let mut buf = [0u8; 8];
+    getrandom::getrandom(&mut buf[0..2]).unwrap();
+    return i64::from_le_bytes(buf);
+}
+
 #[wasm_bindgen]
-pub async fn sub_topic_list(prefix: &str) {
+pub fn subscribe(name: &str, f: js_sys::Function, periodic: Option<f64>) -> i64 {
+    let uid = newuid();
+    log::trace!("subscribe -> {}", uid);
+    send_json(TextFrame::Subscribe {
+        topics: vec![String::from(name)],
+        subuid: uid,
+        options: SubscribeOptions {
+            periodic,
+            all: true,
+            topicsonly: false,
+            prefix: false,
+        },
+    })
+    .unwrap();
+    STATE.with(|st| {
+        let topic_id = st.borrow_mut().topic_names.get(name).map(|x| *x).unwrap_or(-1);
+        if topic_id >= 0 {
+            st.borrow_mut().sub_callbacks.insert(topic_id, f);
+        }
+    });
+    uid
+}
+
+#[wasm_bindgen]
+pub fn unsubscribe(uid: i64) {
+    send_json(TextFrame::Unsubscribe { subuid: uid }).unwrap();
+}
+
+#[wasm_bindgen]
+pub async fn sub_topic_list(prefix: &str) -> i64 {
+    let uid = newuid();
+    log::trace!("sub_topic_list -> {}", uid);
     send_json(TextFrame::Subscribe {
         topics: vec![String::from(prefix)],
-        subuid: 2030,
+        subuid: uid,
         options: SubscribeOptions {
             periodic: None,
             all: true,
@@ -341,6 +389,29 @@ pub async fn sub_topic_list(prefix: &str) {
         },
     })
     .unwrap();
+    uid
+}
+
+#[wasm_bindgen]
+pub async fn publish(name: &str, ty: &str) -> i64 {
+    let uid = newuid();
+    log::trace!("publish -> {}", uid);
+    send_json(TextFrame::Publish {
+        name: name.to_string(),
+        pubuid: uid,
+        ty: ty.to_string(),
+        properties: Properties {
+            persistent: true,
+            retained: true,
+        },
+    })
+    .unwrap();
+    uid
+}
+
+#[wasm_bindgen]
+pub fn unpublish(uid: i64) {
+    send_json(TextFrame::Unpublish { pubuid: uid }).unwrap();
 }
 
 #[wasm_bindgen(start)]
