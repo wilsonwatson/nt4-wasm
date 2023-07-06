@@ -4,7 +4,7 @@ A WebAssembly-based [NT4 Client](https://github.com/wpilibsuite/allwpilib/tree/m
 
 ## Build Instructions
 
-Requires: `[wasm-pack](https://rustwasm.github.io/wasm-pack/installer/)`
+Requires: [`wasm-pack`](https://rustwasm.github.io/wasm-pack/installer/)
 
 ```
 wasm-pack build --target no-modules
