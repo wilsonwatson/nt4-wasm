@@ -12,9 +12,9 @@
     <p>/Shuffleboard/Main Driver/Photon Good: <span subscribe="/Shuffleboard/Main Driver/Photon Good"></span></p>
     <p>/Shuffleboard/Auto/Column: <span subscribe="/Shuffleboard/Auto/Column/active"></span></p>
     <p>/TestPub: <input publish="/TestPub" publish_type="string"></input></p>
-    <script src="nt4_wasm.js"></script>
+    <script src="nt4.js"></script>
     <script>
-        run("webwoo2", "localhost");
+        run("webwoo2", location.hostname);
     </script>
 </body>
 </html>

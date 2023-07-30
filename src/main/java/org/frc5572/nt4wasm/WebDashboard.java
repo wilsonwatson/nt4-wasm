@@ -1,7 +1,6 @@
 package org.frc5572.nt4wasm;
 
 import java.io.File;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 
 import edu.wpi.first.wpilibj.Filesystem;
@@ -18,11 +17,11 @@ public class WebDashboard {
         server = Javalin.create(/* config */)
                 .get("nt4.js", ctx -> {
                     ctx.contentType(ContentType.TEXT_JS)
-                            .result(WebDashboard.class.getClassLoader().getResourceAsStream("/nt4.js"));
+                            .result(WebDashboard.class.getClassLoader().getResourceAsStream("nt4.js"));
                 })
                 .get("nt4_wasm_bg.wasm", ctx -> {
                     ctx.contentType(ContentType.APPLICATION_OCTET_STREAM)
-                            .result(WebDashboard.class.getClassLoader().getResourceAsStream("/nt4_wasm_bg.wasm"));
+                            .result(WebDashboard.class.getClassLoader().getResourceAsStream("nt4_wasm_bg.wasm"));
                 })
                 .get("/*", ctx -> {
                     String path = ctx.path();
@@ -42,15 +41,8 @@ public class WebDashboard {
                                 ctx.contentType(ContentType.TEXT_HTML).result(data);
                                 break;
                             case "JS":
-                                if (simulation) {
-                                    ctx.contentType(ContentType.TEXT_JS)
-                                            .result(new String(data, StandardCharsets.UTF_8)
-                                                    .replaceAll("\\{ROBOT\\_IP\\}", "localhost"));
-                                } else {
-                                    ctx.contentType(ContentType.TEXT_JS)
-                                            .result(new String(data, StandardCharsets.UTF_8)
-                                                    .replaceAll("\\{ROBOT\\_IP\\}", "10.55.72.2"));
-                                }
+                                ctx.contentType(ContentType.TEXT_JS)
+                                        .result(data);
                                 break;
                             case "WASM":
                                 ctx.contentType(ContentType.APPLICATION_OCTET_STREAM).result(data);
