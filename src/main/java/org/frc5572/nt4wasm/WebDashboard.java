@@ -20,7 +20,7 @@ public class WebDashboard {
                             .result(WebDashboard.class.getClassLoader().getResourceAsStream("nt4.js"));
                 })
                 .get("nt4_wasm_bg.wasm", ctx -> {
-                    ctx.contentType(ContentType.APPLICATION_OCTET_STREAM)
+                    ctx.contentType("application/wasm")
                             .result(WebDashboard.class.getClassLoader().getResourceAsStream("nt4_wasm_bg.wasm"));
                 })
                 .get("/*", ctx -> {
