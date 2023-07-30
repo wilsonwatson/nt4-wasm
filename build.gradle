@@ -27,7 +27,6 @@ task check_minor_bump {
             req.setRequestProperty("Authorization", "Bearer " + System.getenv("GITHUB_TOKEN"))
             req.setRequestProperty("X-GitHub-Api-Version", "2022-11-28")
             req.setDoOutput(true)
-            req.getOutputStream().write()
             logger.quiet "Status code: ${req.getResponseCode()}" // HTTP request done on first read
             def resp = req.getInputStream().getText()
             logger.quiet "Response: ${resp}"
