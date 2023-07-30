@@ -45,7 +45,7 @@ jar {
 publishing {
     publications {
         maven(MavenPublication) {
-            groupId = 'org.wilsonwatson.nt4wasm'
+            groupId = 'org.wilsonwatson'
             artifactId = 'nt4wasm'
             version = '0.1'
 

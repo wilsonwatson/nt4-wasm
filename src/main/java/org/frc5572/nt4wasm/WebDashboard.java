@@ -1,7 +1,6 @@
 package org.frc5572.nt4wasm;
 
 import java.io.File;
-import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 
