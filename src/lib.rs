@@ -514,26 +514,6 @@ pub async fn initialize() {
     console_log::init_with_level(log::Level::Warn).expect("Couldn't initialize logger");
 }
 
-fn to_string(v: JsValue) -> String {
-    if let Some(x) = v.js_typeof().as_string() {
-        match x.as_str() {
-            "string" => v.as_string().unwrap(),
-            "boolean" => {
-                if v.as_bool().unwrap() {
-                    String::from("true")
-                } else {
-                    String::from("false")
-                }
-            }
-            _ => {
-                format!("{}", x)
-            }
-        }
-    } else {
-        format!("?")
-    }
-}
-
 fn infill(node: &HtmlElement, topic: String) {
     let _doc = web_sys::window().unwrap().document().unwrap();
     let period = node
@@ -541,11 +521,33 @@ fn infill(node: &HtmlElement, topic: String) {
         .and_then(|x| x.parse::<f64>().ok());
 
     match node.tag_name().as_str() {
+        "INPUT" => {
+            let ncopy = node.clone();
+            if let Ok(node) = ncopy.dyn_into::<HtmlInputElement>() {
+                let a = Closure::<dyn Fn(JsValue)>::new(move |value: JsValue| {
+                    if let Ok(v) = serde_wasm_bindgen::from_value::<rmpv::Value>(value) {
+                        if let Ok(v) = serde_json::to_string(&v) {
+                            node.set_value(&v);
+                        }
+                    }
+                });
+                subscribe(
+                    &topic,
+                    a.as_ref().unchecked_ref::<js_sys::Function>().clone(),
+                    period,
+                );
+                a.forget();
+            }
+        }
         _ => {
             // simple print
             let ncopy = node.clone();
             let a = Closure::<dyn Fn(JsValue)>::new(move |value: JsValue| {
-                ncopy.set_inner_text(&to_string(value));
+                if let Ok(v) = serde_wasm_bindgen::from_value::<rmpv::Value>(value) {
+                    if let Ok(v) = serde_json::to_string(&v) {
+                        ncopy.set_inner_text(&v);
+                    }
+                }
             });
             subscribe(
                 &topic,
