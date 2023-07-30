@@ -36,7 +36,7 @@ task check_minor_bump {
                 logger.quiet "item split: ${item.name.split("\\.")}"
                 def parts = item.name.split("\\.");
                 if(parts.length < 3) {
-                    continue;
+                    return;
                 }
                 def item_major = Integer.parseInt(parts[0])
                 def item_minor = Integer.parseInt(parts[1]);
