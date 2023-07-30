@@ -47,7 +47,7 @@ publishing {
         maven(MavenPublication) {
             groupId = "org.wilsonwatson"
             artifactId = System.getenv('PATCH') == null ? "nt4wasm" : "nt4wasm_bleeding_edge"
-            version = "0." + (System.getenv('PATCH') == null ? "0" : System.getenv('PATCH'))
+            version = "0.1." + (System.getenv('PATCH') == null ? "0" : System.getenv('PATCH'))
 
             from components.java
         }
