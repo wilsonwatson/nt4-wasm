@@ -42,7 +42,7 @@ task check_minor_bump {
                     throw new GradleException("Need to bump up major version to >= ${item_major}! ${item.name} is newer")
                 } else if (item_major == version_major && item_minor > version_minor) {
                     throw new GradleException("Need to bump up minor version to >= ${item_minor}! ${item.name} is newer")
-                } else if (item_major == version_major && item_major == version_major && version_patch == 0) { // is release
+                } else if (item_major == version_major && item_minor == version_minor && version_patch == 0) { // is release
                     throw new GradleException("Need to bump up minor version to ${item_minor + 1}! ${item.name} is equivalent")
                 }
             }
