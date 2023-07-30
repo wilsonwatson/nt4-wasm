@@ -1,8 +1,10 @@
-name: Upload Package
+name: BleedingEdge Packaging
 
 on:
     workflow_dispatch:
     push:
+      branches-ignore:
+        - main
 
 jobs:
     main:

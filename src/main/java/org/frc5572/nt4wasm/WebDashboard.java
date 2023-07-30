@@ -9,18 +9,24 @@ import io.javalin.Javalin;
 import io.javalin.http.ContentType;
 import io.javalin.http.HttpStatus;
 
+/**
+ * A Webserver hosting an NT4 Client Dashboard
+ */
 public class WebDashboard {
 
     private static Javalin server;
 
-    public static void start(boolean simulation) {
+    /**
+     * Start hosting server on port 7070.
+     */
+    public static void start() {
         server = Javalin.create(/* config */)
                 .get("nt4.js", ctx -> {
                     ctx.contentType(ContentType.TEXT_JS)
                             .result(WebDashboard.class.getClassLoader().getResourceAsStream("nt4.js"));
                 })
                 .get("nt4_wasm_bg.wasm", ctx -> {
-                    ctx.contentType(ContentType.APPLICATION_OCTET_STREAM)
+                    ctx.contentType("application/wasm")
                             .result(WebDashboard.class.getClassLoader().getResourceAsStream("nt4_wasm_bg.wasm"));
                 })
                 .get("/*", ctx -> {
@@ -44,6 +50,9 @@ public class WebDashboard {
 
     }
 
+    /**
+     * Shut down server.
+     */
     public static void stop() {
         server.stop();
     }

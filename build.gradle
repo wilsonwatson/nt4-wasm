@@ -1,3 +1,4 @@
+import groovy.json.JsonSlurper;
 
 plugins {
     id 'java-library'
@@ -9,6 +10,45 @@ repositories {
     mavenCentral()
 }
 
+def version_major = 0
+def version_minor = 2
+def version_patch = Integer.parseInt((System.getenv('PATCH') == null ? "0" : System.getenv('PATCH')))
+
+def user = "wilsonwatson"
+def group = "org." + user
+def artifact = System.getenv('PATCH') == null ? "nt4wasm" : "nt4wasm_bleeding_edge"
+def version_str = version_major + "." + version_minor + "." + version_patch
+
+task check_minor_bump {
+    doLast {
+        if (System.getenv("GITHUB_TOKEN") != null) {
+            // check if version_minor is bumped
+            def req = new URL("https://api.github.com/users/" + user + "/packages/maven/" + group + "." + artifact + "/versions").openConnection()
+            req.setRequestMethod("GET")
+            req.setRequestProperty("Content-Type", "application/vnd.github+json")
+            req.setRequestProperty("Authorization", "Bearer " + System.getenv("GITHUB_TOKEN"))
+            req.setRequestProperty("X-GitHub-Api-Version", "2022-11-28")
+            req.setDoOutput(true)
+            def resp = new JsonSlurper().parseText(req.getInputStream().getText())
+            resp.each { item -> 
+                def parts = item.name.split("\\.");
+                if(parts.length < 3) {
+                    return;
+                }
+                def item_major = Integer.parseInt(parts[0])
+                def item_minor = Integer.parseInt(parts[1]);
+                def item_patch = Integer.parseInt(parts[2]);
+                if (item_major > version_major) {
+                    throw new GradleException("Need to bump up major version to >= ${item_major}! ${item.name} is newer")
+                } else if (item_major == version_major && item_minor > version_minor) {
+                    throw new GradleException("Need to bump up minor version to >= ${item_minor}! ${item.name} is newer")
+                } else if (item_major == version_major && item_minor == version_minor && version_patch == 0) { // is release
+                    throw new GradleException("Need to bump up minor version to ${item_minor + 1}! ${item.name} is equivalent")
+                }
+            }
+        }
+    }
+}
 
 sourceCompatibility = JavaVersion.VERSION_11
 targetCompatibility = JavaVersion.VERSION_11
@@ -42,12 +82,19 @@ jar {
     }
 }
 
+java {
+    withJavadocJar()
+    withSourcesJar()
+}
+
+println "building \"" + group + ":" + artifact + ":" + version_str + "\""
+
 publishing {
     publications {
         maven(MavenPublication) {
-            groupId = "org.wilsonwatson"
-            artifactId = System.getenv('PATCH') == null ? "nt4wasm" : "nt4wasm_bleeding_edge"
-            version = "0.1." + (System.getenv('PATCH') == null ? "0" : System.getenv('PATCH'))
+            groupId = group
+            artifactId = artifact
+            version = version_str
 
             from components.java
         }
