@@ -6,7 +6,7 @@ on:
 
 jobs:
     main:
-        name: Build
+        name: BleedingEdge
         runs-on: ubuntu-22.04
         steps:
             - name: "Checkout Repository"

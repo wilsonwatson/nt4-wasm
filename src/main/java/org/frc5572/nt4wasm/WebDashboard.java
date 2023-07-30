@@ -36,21 +36,7 @@ public class WebDashboard {
                     File f = new File(new File(Filesystem.getDeployDirectory(), "dashboard"), path);
                     try {
                         byte[] data = Files.readAllBytes(f.toPath());
-                        switch (ext) {
-                            case "HTML":
-                                ctx.contentType(ContentType.TEXT_HTML).result(data);
-                                break;
-                            case "JS":
-                                ctx.contentType(ContentType.TEXT_JS)
-                                        .result(data);
-                                break;
-                            case "WASM":
-                                ctx.contentType(ContentType.APPLICATION_OCTET_STREAM).result(data);
-                                break;
-                            default:
-                                ctx.contentType(ContentType.TEXT_PLAIN).result(data);
-                                break;
-                        }
+                        ctx.contentType(ContentType.getContentTypeByExtension(ext)).result(data);
                     } catch (Exception e) {
                         ctx.status(HttpStatus.NOT_FOUND);
                     }
