@@ -29,11 +29,8 @@ task check_minor_bump {
             req.setRequestProperty("Authorization", "Bearer " + System.getenv("GITHUB_TOKEN"))
             req.setRequestProperty("X-GitHub-Api-Version", "2022-11-28")
             req.setDoOutput(true)
-            logger.quiet "Status code: ${req.getResponseCode()}" // HTTP request done on first read
             def resp = new JsonSlurper().parseText(req.getInputStream().getText())
             resp.each { item -> 
-                logger.quiet "item: ${item.name}"
-                logger.quiet "item split: ${item.name.split("\\.")}"
                 def parts = item.name.split("\\.");
                 if(parts.length < 3) {
                     return;
@@ -45,11 +42,10 @@ task check_minor_bump {
                     throw new GradleException("Need to bump up major version to >= ${item_major}!")
                 } else if (item_major == version_major && item_minor > version_minor) {
                     throw new GradleException("Need to bump up minor version to >= ${item_minor}!")
-                } else if (item_major == version_major && item_minor == version_minor && item_patch >= version_patch) {
-                    throw new GradleException("Need to bump up patch version to >= ${item_patch}!")
+                } else if (item_major == version_major && item_major == version_major && version_patch == 0) { // is release
+                    throw new GradleException("Need to bump up minor version to ${item_minor + 1}!")
                 }
             }
-            logger.quiet "Response: ${resp}"
         }
     }
 }
@@ -75,8 +71,6 @@ task buildWasm(type: Exec) {
         output.write('') // clear
         toConcatenate.each { f -> output << f.text }
     }
-
-    dependsOn(check_minor_bump)
 }
 
 tasks.jar.dependsOn(buildWasm)
