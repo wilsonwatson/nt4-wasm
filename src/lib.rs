@@ -5,8 +5,8 @@ use js_sys::Array;
 use serde::{ser::Error, Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 use web_sys::{
-    Event, HtmlElement, MessageEvent, MutationObserver, MutationObserverInit, MutationRecord,
-    WebSocket, HtmlInputElement,
+    Event, HtmlElement, HtmlInputElement, MessageEvent, MutationObserver, MutationObserverInit,
+    MutationRecord, WebSocket,
 };
 
 const SUB_TO_TOPIC_ATTR: &'static str = "subscribe";
@@ -98,6 +98,8 @@ struct State {
     announce_callbacks: Vec<js_sys::Function>,
     unannounce_callbacks: Vec<js_sys::Function>,
     properties_callbacks: Vec<js_sys::Function>,
+    close_callbacks: Vec<js_sys::Function>,
+    ready_callbacks: Vec<js_sys::Function>,
     sub_callbacks: HashMap<String, js_sys::Function>,
     topic_names: BiMap<String, i64>,
     periodic: i32,
@@ -128,13 +130,16 @@ fn send_binary_fill(id: i64, ty: String, v: rmpv::Value) -> Result<(), rmp_serde
         "int[]" => 18,
         "float[]" => 19,
         "string[]" => 20,
-        _ => return Err(rmp_serde::encode::Error::custom(format!("invalid type: {:?}", ty))),
+        _ => {
+            return Err(rmp_serde::encode::Error::custom(format!(
+                "invalid type: {:?}",
+                ty
+            )))
+        }
     };
     STATE.with(|st| {
-        let perf = web_sys::window().unwrap().performance().unwrap();
-        let now = (perf.now() * 1000.0) as i64;
-        let time = (now + st.borrow().offs as i64) as u32;
-        st.borrow().send_binary(BinaryFrame(id, time, ty, v))
+        st.borrow()
+            .send_binary(BinaryFrame(id, st.borrow().now(), ty, v))
     })
 }
 
@@ -152,6 +157,8 @@ impl State {
             announce_callbacks: Vec::new(),
             unannounce_callbacks: Vec::new(),
             properties_callbacks: Vec::new(),
+            close_callbacks: Vec::new(),
+            ready_callbacks: Vec::new(),
             sub_callbacks: HashMap::new(),
             topic_names: BiMap::new(),
             periodic: -1,
@@ -212,6 +219,9 @@ impl State {
                             st.borrow_mut().offs =
                                 server_time as i32 - rtt_2 as i32 - local_time.round() as i32;
                             st.borrow_mut().ready = true;
+                            for callback in &st.borrow_mut().ready_callbacks {
+                                _ = callback.call0(&JsValue::NULL);
+                            }
                             st.borrow().now()
                         });
                         log::trace!("time synced: now = {}, server = {}", new_time, server_time);
@@ -289,6 +299,10 @@ impl State {
                 });
             });
             STATE.with(|st| {
+                st.borrow_mut().ready = false;
+                for callback in &st.borrow_mut().close_callbacks {
+                    _ = callback.call0(&JsValue::NULL);
+                }
                 web_sys::window()
                     .unwrap()
                     .clear_interval_with_handle(st.borrow().periodic)
@@ -404,6 +418,11 @@ pub fn add_event_listener(name: &str, f: js_sys::Function) {
                 st.borrow_mut().properties_callbacks.push(f);
             });
         }
+        "close" => {
+            STATE.with(|st| {
+                st.borrow_mut().close_callbacks.push(f);
+            });
+        }
         x => log::warn!("Unrecognized event {:?}", x),
     }
 }
@@ -493,7 +512,13 @@ fn to_string(v: JsValue) -> String {
     if let Some(x) = v.js_typeof().as_string() {
         match x.as_str() {
             "string" => v.as_string().unwrap(),
-            "boolean" => if v.as_bool().unwrap() { String::from("true") } else { String::from("false") }
+            "boolean" => {
+                if v.as_bool().unwrap() {
+                    String::from("true")
+                } else {
+                    String::from("false")
+                }
+            }
             _ => {
                 format!("{}", x)
             }
@@ -540,25 +565,24 @@ fn infill_pub(node: &HtmlElement, topic: String, ty: String) {
         "INPUT" => {
             let id = publish(&topic, &ty);
             let ncopy = node.clone().dyn_into::<HtmlInputElement>().unwrap();
-            let a = Closure::<dyn Fn()>::new(move || {
-                match ty.as_str() {
-                    "string" => {
-                        let data = ncopy.value();
-                        send_data(id, ty.clone(), JsValue::from_str(&data));
-                    },
-                    "float" | "double" | "int" => {
-                        let data = ncopy.value_as_number();
-                        send_data(id, ty.clone(), JsValue::from_f64(data));
-                    },
-                    _ => {}
+            let a = Closure::<dyn Fn()>::new(move || match ty.as_str() {
+                "string" => {
+                    let data = ncopy.value();
+                    send_data(id, ty.clone(), JsValue::from_str(&data));
                 }
+                "float" | "double" | "int" => {
+                    let data = ncopy.value_as_number();
+                    send_data(id, ty.clone(), JsValue::from_f64(data));
+                }
+                _ => {}
             });
-            node.add_event_listener_with_callback("change", a.as_ref().unchecked_ref()).unwrap();
+            node.add_event_listener_with_callback("change", a.as_ref().unchecked_ref())
+                .unwrap();
             a.forget();
         }
         x => {
             log::warn!("{}", x);
-        },
+        }
     }
 }
 
@@ -593,6 +617,61 @@ where
 #[wasm_bindgen]
 pub async fn _nt4_start(name: String, x: &JsValue) {
     log::trace!("_nt4_start({:?}, {:?})", name, x);
+    // ready callbacks
+    STATE.with(|st| {
+        let ready_callback = Closure::<dyn Fn()>::new(move || {
+            let doc = web_sys::window().unwrap().document().unwrap();
+            if let Ok(parts) = doc.query_selector_all(".nt_is_ready") {
+                for i in 0..parts.length() {
+                    if let Some(node) = parts.item(i) {
+                        if let Ok(elem) = node.dyn_into::<HtmlElement>() {
+                            _ = elem.class_list().add_1("nt_ready");
+                            _ = elem.class_list().remove_1("nt_closed");
+                        }
+                    }
+                }
+            }
+        });
+        st.borrow_mut().ready_callbacks.push(
+            ready_callback
+                .as_ref()
+                .unchecked_ref::<js_sys::Function>()
+                .clone(),
+        );
+        ready_callback.forget();
+        let close_callback = Closure::<dyn Fn()>::new(move || {
+            let doc = web_sys::window().unwrap().document().unwrap();
+            if let Ok(parts) = doc.query_selector_all(".nt_is_ready") {
+                for i in 0..parts.length() {
+                    if let Some(node) = parts.item(i) {
+                        if let Ok(elem) = node.dyn_into::<HtmlElement>() {
+                            _ = elem.class_list().add_1("nt_closed");
+                            _ = elem.class_list().remove_1("nt_ready");
+                        }
+                    }
+                }
+            }
+        });
+        st.borrow_mut().close_callbacks.push(
+            close_callback
+                .as_ref()
+                .unchecked_ref::<js_sys::Function>()
+                .clone(),
+        );
+        close_callback.forget();
+    });
+
+    let doc = web_sys::window().unwrap().document().unwrap();
+    if let Ok(parts) = doc.query_selector_all(".nt_is_ready") {
+        for i in 0..parts.length() {
+            if let Some(node) = parts.item(i) {
+                if let Ok(elem) = node.dyn_into::<HtmlElement>() {
+                    _ = elem.class_list().add_1("nt_closed");
+                }
+            }
+        }
+    }
+
     start(name, x);
     assert!(StateFuture.await);
 

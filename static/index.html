@@ -8,17 +8,12 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
+    <div class="nt_is_ready"><span class="ready">Ready</span><span class="closed">Not Ready</span></div>
     <p>/Shuffleboard/Main Driver/Photon Good: <span subscribe="/Shuffleboard/Main Driver/Photon Good"></span></p>
     <p>/Shuffleboard/Auto/Column: <span subscribe="/Shuffleboard/Auto/Column/active"></span></p>
-    <p>/Test: <input publish="/Test" publish_type="string"></input></p>
-    <script src="pkg/nt4_wasm.js"></script>
+    <p>/TestPub: <input publish="/TestPub" publish_type="string"></input></p>
+    <script src="nt4_wasm.js"></script>
     <script>
-        async function run(name, ip) {
-            const { _nt4_start } = wasm_bindgen;
-            await wasm_bindgen('./pkg/nt4_wasm_bg.wasm');
-            await _nt4_start(name, ip);
-        }
-
         run("webwoo2", "localhost");
     </script>
 </body>
