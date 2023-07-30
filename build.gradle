@@ -39,11 +39,11 @@ task check_minor_bump {
                 def item_minor = Integer.parseInt(parts[1]);
                 def item_patch = Integer.parseInt(parts[2]);
                 if (item_major > version_major) {
-                    throw new GradleException("Need to bump up major version to >= ${item_major}!")
+                    throw new GradleException("Need to bump up major version to >= ${item_major}! ${item.name} is newer")
                 } else if (item_major == version_major && item_minor > version_minor) {
-                    throw new GradleException("Need to bump up minor version to >= ${item_minor}!")
+                    throw new GradleException("Need to bump up minor version to >= ${item_minor}! ${item.name} is newer")
                 } else if (item_major == version_major && item_major == version_major && version_patch == 0) { // is release
-                    throw new GradleException("Need to bump up minor version to ${item_minor + 1}!")
+                    throw new GradleException("Need to bump up minor version to ${item_minor + 1}! ${item.name} is equivalent")
                 }
             }
         }
