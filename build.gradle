@@ -48,6 +48,11 @@ jar {
     }
 }
 
+java {
+    withJavadocJar()
+    withSourcesJar()
+}
+
 task printVersion {
     println "building \"" + group + ":" + artifact + ":" + version + "\""
     dependsOn(buildWasm)
