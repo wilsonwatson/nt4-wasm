@@ -3,6 +3,8 @@ name: Upload Package
 on:
     workflow_dispatch:
     push:
+        branches:
+            "main"
 
 jobs:
     main:
@@ -27,5 +29,4 @@ jobs:
               with:
                 arguments: publish
               env:
-                PATCH: ${{ github.run_number }}
                 GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
