@@ -13,8 +13,8 @@ repositories {
 def version_major = 0
 def version_minor = 1
 
-def username = "wilsonwatson"
-def group = "org." + username
+def user = "wilsonwatson"
+def group = "org." + user
 def artifact = System.getenv('PATCH') == null ? "nt4wasm" : "nt4wasm_bleeding_edge"
 def version_str = version_major + "." + version_minor + "." + (System.getenv('PATCH') == null ? "0" : System.getenv('PATCH'))
 
@@ -22,7 +22,7 @@ task check_minor_bump {
     doLast {
         if (System.getenv("GITHUB_TOKEN") != null) {
             // check if version_minor is bumped
-            def req = new URL("https://api.github.com/users/" + username + "/packages/maven/" + group + "." + artifact + "/versions").openConnection()
+            def req = new URL("https://api.github.com/users/" + user + "/packages/maven/" + group + "." + artifact + "/versions").openConnection()
             req.setRequestMethod("GET")
             req.setRequestProperty("Content-Type", "application/vnd.github+json")
             req.setRequestProperty("Authorization", "Bearer " + System.getenv("GITHUB_TOKEN"))
@@ -30,6 +30,12 @@ task check_minor_bump {
             req.setDoOutput(true)
             logger.quiet "Status code: ${req.getResponseCode()}" // HTTP request done on first read
             def resp = new JsonSlurper().parseText(req.getInputStream().getText())
+            resp.each { item -> 
+                def item_minor = Integer.parseInt(item.name.split('.')[1]);
+                if (item_minor >= version_major) {
+                    throw new GradleException("Need to bump up minor version!")
+                }
+            }
             logger.quiet "Response: ${resp}"
         }
     }
