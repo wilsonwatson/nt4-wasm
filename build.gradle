@@ -31,6 +31,7 @@ task check_minor_bump {
             logger.quiet "Status code: ${req.getResponseCode()}" // HTTP request done on first read
             def resp = new JsonSlurper().parseText(req.getInputStream().getText())
             resp.each { item -> 
+                logger.quiet "item: ${item.name}"
                 def item_minor = Integer.parseInt(item.name.split('.')[1]);
                 if (item_minor >= version_major) {
                     throw new GradleException("Need to bump up minor version!")
