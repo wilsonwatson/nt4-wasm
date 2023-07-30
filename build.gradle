@@ -14,7 +14,7 @@ def version_minor = 1
 
 def group = "org.wilsonwatson"
 def artifact = System.getenv('PATCH') == null ? "nt4wasm" : "nt4wasm_bleeding_edge"
-def version = version_major + "." + version_minor + "." + (System.getenv('PATCH') == null ? "0" : System.getenv('PATCH'))
+def version_str = version_major + "." + version_minor + "." + (System.getenv('PATCH') == null ? "0" : System.getenv('PATCH'))
 
 sourceCompatibility = JavaVersion.VERSION_11
 targetCompatibility = JavaVersion.VERSION_11
@@ -54,7 +54,7 @@ java {
 }
 
 task printVersion {
-    println "building \"" + group + ":" + artifact + ":" + version + "\""
+    println "building \"" + group + ":" + artifact + ":" + version_str + "\""
     dependsOn(buildWasm)
 }
 
@@ -63,7 +63,7 @@ publishing {
         maven(MavenPublication) {
             groupId = group
             artifactId = artifact
-            version = version
+            version = version_str
 
             from components.java
         }
