@@ -1,4 +1,4 @@
-name: Upload Package
+name: Release Packaging
 
 on:
     workflow_dispatch:

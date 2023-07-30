@@ -9,6 +9,12 @@ repositories {
     mavenCentral()
 }
 
+def version_major = 0
+def version_minor = 1
+
+def group = "org.wilsonwatson"
+def artifact = System.getenv('PATCH') == null ? "nt4wasm" : "nt4wasm_bleeding_edge"
+def version = version_major + "." + version_minor + "." + (System.getenv('PATCH') == null ? "0" : System.getenv('PATCH'))
 
 sourceCompatibility = JavaVersion.VERSION_11
 targetCompatibility = JavaVersion.VERSION_11
@@ -42,12 +48,17 @@ jar {
     }
 }
 
+task printVersion {
+    println "building \"" + group + ":" + artifact + ":" + version + "\""
+    dependsOn(buildWasm)
+}
+
 publishing {
     publications {
         maven(MavenPublication) {
-            groupId = "org.wilsonwatson"
-            artifactId = System.getenv('PATCH') == null ? "nt4wasm" : "nt4wasm_bleeding_edge"
-            version = "0.1." + (System.getenv('PATCH') == null ? "0" : System.getenv('PATCH'))
+            groupId = group
+            artifactId = artifact
+            version = version
 
             from components.java
         }
@@ -64,3 +75,5 @@ publishing {
         }
     }
 }
+
+tasks.publishMavenPublicationToGithubPackagesRepository.dependsOn(printVersion)
