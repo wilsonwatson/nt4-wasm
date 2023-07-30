@@ -26,12 +26,12 @@ function watchTree(id, add, sub) {
             if(mutation.type === "childList") {
                 if(add) {
                     for(const added of mutation.addedNodes) {
-                        add(added.getAttribute("name"), added.getAttribute("type"))
+                        add(added)
                     }
                 }
                 if(sub) {
                     for(const subtracted of mutation.removedNodes) {
-                        sub(subtracted.getAttribute("name"), subtracted.getAttribute("type"))
+                        sub(subtracted)
                     }
                 }
             }

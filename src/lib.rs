@@ -457,7 +457,7 @@ pub fn unsubscribe(uid: i64) {
     send_json(TextFrame::Unsubscribe { subuid: uid }).unwrap();
 }
 
-pub async fn sub_topic_list(prefix: &str) -> i64 {
+pub fn sub_topic_list(prefix: &str) -> i64 {
     let uid = newuid();
     log::trace!("sub_topic_list -> {}", uid);
     send_json(TextFrame::Subscribe {
@@ -561,9 +561,21 @@ fn infill(node: &HtmlElement, topic: String) {
     node.set_attribute(PROCESSED_ATTR, "true").unwrap();
 }
 
-/// add proper events for topic list (TODO)
-fn infill_list(node: &HtmlElement, _root: String) {
+/// add proper events for topic list
+fn infill_list(node: &HtmlElement, root: String) {
     log::warn!("subscribe lists are not yet implemented!");
+    let ncopy = node.clone();
+    let a = Closure::<dyn Fn(JsValue, JsValue)>::new(move |name: JsValue, ty: JsValue| {
+        let doc = web_sys::window().unwrap().document().unwrap();
+        let div = doc.create_element("div").unwrap();
+        div.set_attribute("name", &name.as_string().unwrap()).unwrap();
+        div.set_attribute("type", &ty.as_string().unwrap()).unwrap();
+        ncopy.append_child(&div).unwrap();
+    });
+    add_event_listener("announce", a.as_ref().unchecked_ref::<js_sys::Function>().clone());
+    a.forget();
+    // TODO unannounce
+    sub_topic_list(&root);
     node.set_attribute(PROCESSED_ATTR, "true").unwrap();
 }
 
