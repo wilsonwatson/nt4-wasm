@@ -17,3 +17,26 @@ function watchValue(id, f) {
     const observer = new MutationObserver(callback);
     observer.observe(target, config);
 }
+
+function watchTree(id, add, sub) {
+    const target = document.getElementById(id);
+    const config = { attributes: false, childList: true, subtree: false };
+    const callback = (mutationList, _) => {
+        for (const mutation of mutationList) {
+            if(mutation.type === "childList") {
+                if(add) {
+                    for(const added of mutation.addedNodes) {
+                        add(added.getAttribute("name"), added.getAttribute("type"))
+                    }
+                }
+                if(sub) {
+                    for(const subtracted of mutation.removedNodes) {
+                        sub(subtracted.getAttribute("name"), subtracted.getAttribute("type"))
+                    }
+                }
+            }
+        }
+    }
+    const observer = new MutationObserver(callback);
+    observer.observe(target, config);
+}
