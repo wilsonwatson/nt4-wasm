@@ -1,0 +1,37 @@
+* {
+    margin: 0px;
+    padding: 0px;
+}
+
+.nt_ready span.ready {
+    display: inline;
+}
+
+.nt_ready span.closed {
+    display: none;
+}
+
+.nt_closed span.ready {
+    display: none;
+}
+
+.nt_closed span.closed {
+    display: inline;
+}
+
+.nt_is_ready {
+    width: 100vw;
+    height: 2rem;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: white;
+}
+
+.nt_ready {
+    background-color: green;
+}
+
+.nt_closed {
+    background-color: red;
+}

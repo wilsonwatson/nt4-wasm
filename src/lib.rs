@@ -1,8 +1,20 @@
 use std::{cell::RefCell, collections::HashMap, fmt::Debug, future::Future, rc::Rc};
 
+use bimap::BiMap;
+use js_sys::Array;
 use serde::{ser::Error, Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
-use web_sys::{ErrorEvent, MessageEvent, WebSocket};
+use web_sys::{
+    Event, HtmlElement, HtmlInputElement, MessageEvent, MutationObserver, MutationObserverInit,
+    MutationRecord, WebSocket,
+};
+
+const SUB_TO_TOPIC_ATTR: &'static str = "subscribe";
+const SUB_TO_TOPIC_LIST_ATTR: &'static str = "subscribe_list";
+const PUB_TOPIC_ATTR: &'static str = "publish";
+const PUB_TOPIC_TYPE_ATTR: &'static str = "publish_type";
+const PROCESSED_ATTR: &'static str = "nt4_processed";
+const PERIOD_ATTR: &'static str = "period";
 
 thread_local! {
     static STATE: Rc<RefCell<State>> = Rc::new(RefCell::new(State::new()));
@@ -81,13 +93,16 @@ struct BinaryFrame<T = rmpv::Value>(i64, u32, u32, T);
 struct State {
     name: String,
     ws: Option<WebSocket>,
-    offs: u32,
+    offs: i32,
     ready: bool,
     announce_callbacks: Vec<js_sys::Function>,
     unannounce_callbacks: Vec<js_sys::Function>,
     properties_callbacks: Vec<js_sys::Function>,
-    sub_callbacks: HashMap<i64, js_sys::Function>,
-    topic_names: HashMap<String, i64>,
+    close_callbacks: Vec<js_sys::Function>,
+    ready_callbacks: Vec<js_sys::Function>,
+    sub_callbacks: HashMap<String, js_sys::Function>,
+    topic_names: BiMap<String, i64>,
+    periodic: i32,
 }
 
 // As described here
@@ -100,6 +115,32 @@ fn timesync() {
 
 fn send_binary<T: Serialize + Debug>(v: BinaryFrame<T>) -> Result<(), rmp_serde::encode::Error> {
     STATE.with(|st| st.borrow().send_binary(v))
+}
+
+fn send_binary_fill(id: i64, ty: String, v: rmpv::Value) -> Result<(), rmp_serde::encode::Error> {
+    let ty: u32 = match ty.as_str() {
+        "boolean" => 0,
+        "double" => 1,
+        "int" => 2,
+        "float" => 3,
+        "string" | "json" => 4,
+        "raw" | "rpc" | "msgpack" | "protobuf" => 5,
+        "boolean[]" => 16,
+        "double[]" => 17,
+        "int[]" => 18,
+        "float[]" => 19,
+        "string[]" => 20,
+        _ => {
+            return Err(rmp_serde::encode::Error::custom(format!(
+                "invalid type: {:?}",
+                ty
+            )))
+        }
+    };
+    STATE.with(|st| {
+        st.borrow()
+            .send_binary(BinaryFrame(id, st.borrow().now(), ty, v))
+    })
 }
 
 fn send_json(v: TextFrame) -> Result<(), serde_json::error::Error> {
@@ -116,15 +157,18 @@ impl State {
             announce_callbacks: Vec::new(),
             unannounce_callbacks: Vec::new(),
             properties_callbacks: Vec::new(),
+            close_callbacks: Vec::new(),
+            ready_callbacks: Vec::new(),
             sub_callbacks: HashMap::new(),
-            topic_names: HashMap::new(),
+            topic_names: BiMap::new(),
+            periodic: -1,
         }
     }
 
     fn now(&self) -> u32 {
         let perf = web_sys::window().unwrap().performance().unwrap();
         let now = perf.now() * 1000.0;
-        now.round() as u32 + self.offs
+        (now.round() as i32 + self.offs) as u32
     }
 
     pub fn send_json(&self, v: TextFrame) -> Result<(), serde_json::error::Error> {
@@ -151,7 +195,7 @@ impl State {
 
     pub fn start(&mut self, name: String, s: String) {
         log::debug!("Starting server {} on {:?}", name, s);
-        self.name = name;
+        self.name = name.clone();
 
         let ws = WebSocket::new(&format!("{}nt/{}", s, self.name))
             .expect(&format!("Unable to start websocket connection to {}", s));
@@ -161,7 +205,7 @@ impl State {
             if let Ok(abuf) = e.data().dyn_into::<js_sys::ArrayBuffer>() {
                 let data = js_sys::Uint8Array::new(&abuf).to_vec();
                 if let Ok(data) = rmp_serde::from_slice::<BinaryFrame>(&data) {
-                    println!("binary {:?}", data);
+                    log::trace!("binary {:?}", data);
                     if data.0 == -1 {
                         // timesync
                         let server_time = data.1;
@@ -172,8 +216,12 @@ impl State {
                         // local_time + offs + rtt_2 = server_time
                         // offs = server_time - rtt_2 - local_time
                         let new_time = STATE.with(|st| {
-                            st.borrow_mut().offs = server_time - rtt_2 - local_time.round() as u32;
+                            st.borrow_mut().offs =
+                                server_time as i32 - rtt_2 as i32 - local_time.round() as i32;
                             st.borrow_mut().ready = true;
+                            for callback in &st.borrow_mut().ready_callbacks {
+                                _ = callback.call0(&JsValue::NULL);
+                            }
                             st.borrow().now()
                         });
                         log::trace!("time synced: now = {}, server = {}", new_time, server_time);
@@ -181,8 +229,17 @@ impl State {
                         log::trace!("data in {}", data.0);
                         if let Ok(value) = serde_wasm_bindgen::to_value(&data.3) {
                             STATE.with(|st| {
-                                if let Some(f) = st.borrow_mut().sub_callbacks.get(&data.0) {
-                                    _ = f.call1(&JsValue::null(), &value);
+                                let x = if let Some(topic) =
+                                    st.borrow_mut().topic_names.get_by_right(&data.0)
+                                {
+                                    Some(topic.clone())
+                                } else {
+                                    None
+                                };
+                                if let Some(topic) = x {
+                                    if let Some(f) = st.borrow_mut().sub_callbacks.get(&topic) {
+                                        _ = f.call1(&JsValue::null(), &value);
+                                    }
                                 }
                             })
                         }
@@ -195,12 +252,7 @@ impl State {
                     for frame in data {
                         println!("text {:?}", &frame);
                         match frame {
-                            TextFrame::Announce {
-                                name,
-                                id,
-                                ty,
-                                ..
-                            } => STATE.with(|st| {
+                            TextFrame::Announce { name, id, ty, .. } => STATE.with(|st| {
                                 st.borrow_mut().topic_names.insert(name.clone(), id);
                                 for callback in st.borrow().announce_callbacks.iter() {
                                     _ = callback.call2(
@@ -224,11 +276,49 @@ impl State {
         ws.set_onmessage(Some(on_message_callback.as_ref().unchecked_ref()));
         on_message_callback.forget(); // technically leaks. Needs to check if this is actually an issue
 
-        let onerror_callback = Closure::<dyn FnMut(_)>::new(move |e: ErrorEvent| {
-            log::info!("error {:?}", e);
+        let onerror_callback = Closure::<dyn FnMut(_)>::new(move |e: Event| {
+            let ready = STATE.with(|st| st.borrow_mut().ready);
+            match e.type_().as_str() {
+                "error" => {
+                    STATE.with(|st| st.borrow_mut().ready = false);
+                    log::info!("error establishing connection, trying again in 3 seconds");
+                }
+                "close" => {
+                    if !ready {
+                        return;
+                    }
+                    log::info!("connection closed, trying again in 3 seconds");
+                }
+                _ => return,
+            }
+            let name = name.clone();
+            let s = s.clone();
+            let a = Closure::<dyn Fn()>::new(move || {
+                STATE.with(|st| {
+                    st.borrow_mut().start(name.clone(), s.clone());
+                });
+            });
+            STATE.with(|st| {
+                st.borrow_mut().ready = false;
+                for callback in &st.borrow_mut().close_callbacks {
+                    _ = callback.call0(&JsValue::NULL);
+                }
+                web_sys::window()
+                    .unwrap()
+                    .clear_interval_with_handle(st.borrow().periodic)
+            });
+            web_sys::window()
+                .unwrap()
+                .set_timeout_with_callback_and_timeout_and_arguments_0(
+                    a.as_ref().unchecked_ref(),
+                    3000,
+                )
+                .unwrap();
+            a.forget();
         });
 
         ws.set_onerror(Some(onerror_callback.as_ref().unchecked_ref()));
+        ws.set_onclose(Some(onerror_callback.as_ref().unchecked_ref()));
         onerror_callback.forget();
 
         let onopen_callback = Closure::<dyn FnMut()>::new(move || {
@@ -236,7 +326,7 @@ impl State {
             let a = Closure::<dyn Fn()>::new(|| {
                 timesync();
             });
-            web_sys::window()
+            let periodic = web_sys::window()
                 .unwrap()
                 .set_interval_with_callback_and_timeout_and_arguments_0(
                     a.as_ref().unchecked_ref(),
@@ -244,6 +334,7 @@ impl State {
                 )
                 .unwrap(); // Configure timeout?
             a.forget();
+            STATE.with(|st| st.borrow_mut().periodic = periodic);
             timesync();
         });
 
@@ -309,14 +400,6 @@ impl Future for StateFuture {
     }
 }
 
-#[wasm_bindgen]
-pub async fn _nt4_start(name: String, x: &JsValue) {
-    log::trace!("_nt4_start({:?}, {:?})", name, x);
-    start(name, x);
-    assert!(StateFuture.await);
-}
-
-#[wasm_bindgen(js_name = addEventListener)]
 pub fn add_event_listener(name: &str, f: js_sys::Function) {
     log::trace!("add_event_listener");
     match name {
@@ -335,6 +418,11 @@ pub fn add_event_listener(name: &str, f: js_sys::Function) {
                 st.borrow_mut().properties_callbacks.push(f);
             });
         }
+        "close" => {
+            STATE.with(|st| {
+                st.borrow_mut().close_callbacks.push(f);
+            });
+        }
         x => log::warn!("Unrecognized event {:?}", x),
     }
 }
@@ -345,7 +433,6 @@ fn newuid() -> i64 {
     return i64::from_le_bytes(buf);
 }
 
-#[wasm_bindgen]
 pub fn subscribe(name: &str, f: js_sys::Function, periodic: Option<f64>) -> i64 {
     let uid = newuid();
     log::trace!("subscribe -> {}", uid);
@@ -361,20 +448,15 @@ pub fn subscribe(name: &str, f: js_sys::Function, periodic: Option<f64>) -> i64 
     })
     .unwrap();
     STATE.with(|st| {
-        let topic_id = st.borrow_mut().topic_names.get(name).map(|x| *x).unwrap_or(-1);
-        if topic_id >= 0 {
-            st.borrow_mut().sub_callbacks.insert(topic_id, f);
-        }
+        st.borrow_mut().sub_callbacks.insert(name.to_string(), f);
     });
     uid
 }
 
-#[wasm_bindgen]
 pub fn unsubscribe(uid: i64) {
     send_json(TextFrame::Unsubscribe { subuid: uid }).unwrap();
 }
 
-#[wasm_bindgen]
 pub async fn sub_topic_list(prefix: &str) -> i64 {
     let uid = newuid();
     log::trace!("sub_topic_list -> {}", uid);
@@ -392,8 +474,7 @@ pub async fn sub_topic_list(prefix: &str) -> i64 {
     uid
 }
 
-#[wasm_bindgen]
-pub async fn publish(name: &str, ty: &str) -> i64 {
+pub fn publish(name: &str, ty: &str) -> i64 {
     let uid = newuid();
     log::trace!("publish -> {}", uid);
     send_json(TextFrame::Publish {
@@ -409,7 +490,17 @@ pub async fn publish(name: &str, ty: &str) -> i64 {
     uid
 }
 
-#[wasm_bindgen]
+fn send_data_serde<T : Serialize>(pubid: i64, ty: String, obj: T) {
+    let v: rmpv::Value = rmp_serde::from_slice(&rmp_serde::to_vec(&obj).unwrap()).unwrap();
+    send_binary_fill(pubid, ty, v).unwrap();
+}
+
+#[allow(dead_code)]
+fn send_data(pubid: i64, ty: String, obj: JsValue) {
+    let v: rmpv::Value = serde_wasm_bindgen::from_value(obj).unwrap();
+    send_binary_fill(pubid, ty, v).unwrap();
+}
+
 pub fn unpublish(uid: i64) {
     send_json(TextFrame::Unpublish { pubuid: uid }).unwrap();
 }
@@ -421,4 +512,237 @@ pub async fn initialize() {
     console_log::init_with_level(log::Level::Trace).expect("Couldn't initialize logger");
     #[cfg(not(debug_assertions))]
     console_log::init_with_level(log::Level::Warn).expect("Couldn't initialize logger");
+}
+
+fn to_string(v: JsValue) -> String {
+    if let Some(x) = v.js_typeof().as_string() {
+        match x.as_str() {
+            "string" => v.as_string().unwrap(),
+            "boolean" => {
+                if v.as_bool().unwrap() {
+                    String::from("true")
+                } else {
+                    String::from("false")
+                }
+            }
+            _ => {
+                format!("{}", x)
+            }
+        }
+    } else {
+        format!("?")
+    }
+}
+
+fn infill(node: &HtmlElement, topic: String) {
+    let _doc = web_sys::window().unwrap().document().unwrap();
+    let period = node
+        .get_attribute(PERIOD_ATTR)
+        .and_then(|x| x.parse::<f64>().ok());
+
+    match node.tag_name().as_str() {
+        _ => {
+            // simple print
+            let ncopy = node.clone();
+            let a = Closure::<dyn Fn(JsValue)>::new(move |value: JsValue| {
+                ncopy.set_inner_text(&to_string(value));
+            });
+            subscribe(
+                &topic,
+                a.as_ref().unchecked_ref::<js_sys::Function>().clone(),
+                period,
+            );
+            a.forget();
+        }
+    }
+
+    node.set_attribute(PROCESSED_ATTR, "true").unwrap();
+}
+
+/// add proper events for topic list (TODO)
+fn infill_list(node: &HtmlElement, _root: String) {
+    log::warn!("subscribe lists are not yet implemented!");
+    node.set_attribute(PROCESSED_ATTR, "true").unwrap();
+}
+
+/// add proper events for publisher
+fn infill_pub(node: &HtmlElement, topic: String, ty: String) {
+    match node.tag_name().as_str() {
+        "INPUT" => {
+            let id = publish(&topic, &ty);
+            let ncopy = node.clone().dyn_into::<HtmlInputElement>().unwrap();
+            let a = Closure::<dyn Fn()>::new(move || match ty.as_str() {
+                "string" => {
+                    let data = ncopy.value();
+                    send_data_serde(id, ty.clone(), data);
+                }
+                "double" => {
+                    if let Ok(data) = ncopy.value().parse::<f64>() {
+                        send_data_serde(id, ty.clone(), data);
+                    }
+                }
+                "float" => {
+                    if let Ok(data) = ncopy.value().parse::<f32>() {
+                        send_data_serde(id, ty.clone(), data);
+                    }
+                }
+                "int" => {
+                    if let Ok(data) = ncopy.value().parse::<i64>() {
+                        send_data_serde(id, ty.clone(), data);
+                    }
+                }
+                _ => {}
+            });
+            node.add_event_listener_with_callback("change", a.as_ref().unchecked_ref())
+                .unwrap();
+            a.forget();
+        }
+        x => {
+            log::warn!("{}", x);
+        }
+    }
+}
+
+/// check if element should be infilled, then infill it
+fn maybe_infill<T>(t: T)
+where
+    T: JsCast + AsRef<JsValue> + Into<JsValue>,
+{
+    if let Ok(elem) = t.dyn_into::<HtmlElement>() {
+        if let Some(x) = elem.get_attribute(PROCESSED_ATTR) {
+            if x == "true" {
+                return;
+            }
+        }
+        if let Some(id) = elem.get_attribute(PUB_TOPIC_ATTR) {
+            if let Some(ty) = elem.get_attribute(PUB_TOPIC_TYPE_ATTR) {
+                infill_pub(&elem, id, ty);
+            }
+        }
+        if let Some(id) = elem.get_attribute(SUB_TO_TOPIC_ATTR) {
+            if id.starts_with("/") {
+                infill(&elem, id);
+            }
+        } else if let Some(id) = elem.get_attribute(SUB_TO_TOPIC_LIST_ATTR) {
+            if id.starts_with("/") && !id.ends_with("/") {
+                infill_list(&elem, id);
+            }
+        }
+    }
+}
+
+#[wasm_bindgen]
+pub async fn _nt4_start(name: String, x: &JsValue) {
+    log::trace!("_nt4_start({:?}, {:?})", name, x);
+    // ready callbacks
+    STATE.with(|st| {
+        let ready_callback = Closure::<dyn Fn()>::new(move || {
+            let doc = web_sys::window().unwrap().document().unwrap();
+            if let Ok(parts) = doc.query_selector_all(".nt_is_ready") {
+                for i in 0..parts.length() {
+                    if let Some(node) = parts.item(i) {
+                        if let Ok(elem) = node.dyn_into::<HtmlElement>() {
+                            _ = elem.class_list().add_1("nt_ready");
+                            _ = elem.class_list().remove_1("nt_closed");
+                        }
+                    }
+                }
+            }
+        });
+        st.borrow_mut().ready_callbacks.push(
+            ready_callback
+                .as_ref()
+                .unchecked_ref::<js_sys::Function>()
+                .clone(),
+        );
+        ready_callback.forget();
+        let close_callback = Closure::<dyn Fn()>::new(move || {
+            let doc = web_sys::window().unwrap().document().unwrap();
+            if let Ok(parts) = doc.query_selector_all(".nt_is_ready") {
+                for i in 0..parts.length() {
+                    if let Some(node) = parts.item(i) {
+                        if let Ok(elem) = node.dyn_into::<HtmlElement>() {
+                            _ = elem.class_list().add_1("nt_closed");
+                            _ = elem.class_list().remove_1("nt_ready");
+                        }
+                    }
+                }
+            }
+        });
+        st.borrow_mut().close_callbacks.push(
+            close_callback
+                .as_ref()
+                .unchecked_ref::<js_sys::Function>()
+                .clone(),
+        );
+        close_callback.forget();
+    });
+
+    let doc = web_sys::window().unwrap().document().unwrap();
+    if let Ok(parts) = doc.query_selector_all(".nt_is_ready") {
+        for i in 0..parts.length() {
+            if let Some(node) = parts.item(i) {
+                if let Ok(elem) = node.dyn_into::<HtmlElement>() {
+                    _ = elem.class_list().add_1("nt_closed");
+                }
+            }
+        }
+    }
+
+    start(name, x);
+    assert!(StateFuture.await);
+
+    let a = Closure::<dyn Fn(Vec<MutationRecord>, MutationObserver)>::new(
+        move |records: Vec<MutationRecord>, _observer| {
+            for record in &records {
+                match record.type_().as_str() {
+                    "attributes" => {
+                        if let Some(node) = record.target() {
+                            maybe_infill(node);
+                        }
+                        let doc = web_sys::window().unwrap().document().unwrap();
+                        let p = doc.create_element("p").unwrap();
+                        p.set_inner_html(&format!(
+                            "{:?} {:?}",
+                            record.target(),
+                            record.attribute_name()
+                        ));
+                        doc.body().unwrap().append_child(&p).unwrap();
+                    }
+                    x => {
+                        log::warn!("{:?}", x);
+                    }
+                }
+            }
+        },
+    );
+    let mutation_observer = MutationObserver::new(a.as_ref().unchecked_ref()).unwrap();
+    a.forget();
+
+    let doc = web_sys::window().unwrap().document().unwrap();
+
+    let elems = doc.get_elements_by_tag_name("*");
+    for i in 0..elems.length() {
+        if let Some(elem) = elems.item(i) {
+            maybe_infill(elem);
+        }
+    }
+
+    let body = doc.body().unwrap();
+    let arr = Array::new_with_length(5);
+    // watch any element in body for a change to the following 5 attributes (including creation or destruction)
+    arr.set(0, JsValue::from_str(SUB_TO_TOPIC_ATTR));
+    arr.set(1, JsValue::from_str(SUB_TO_TOPIC_LIST_ATTR));
+    arr.set(2, JsValue::from_str(PROCESSED_ATTR));
+    arr.set(3, JsValue::from_str(PUB_TOPIC_ATTR));
+    arr.set(4, JsValue::from_str(PUB_TOPIC_TYPE_ATTR));
+    mutation_observer
+        .observe_with_options(
+            &body,
+            MutationObserverInit::new()
+                .attributes(true)
+                .subtree(true)
+                .attribute_filter(&arr),
+        )
+        .unwrap();
 }

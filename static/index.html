@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="nt_is_ready"><span class="ready">Ready</span><span class="closed">Not Ready</span></div>
+    <p>/Shuffleboard/Main Driver/Photon Good: <span subscribe="/Shuffleboard/Main Driver/Photon Good"></span></p>
+    <p>/Shuffleboard/Auto/Column: <span subscribe="/Shuffleboard/Auto/Column/active"></span></p>
+    <p>/TestPub: <input publish="/TestPub" publish_type="string"></input></p>
+    <script src="nt4.js"></script>
+    <script>
+        run("webwoo2", location.hostname);
+    </script>
+</body>
+</html>
