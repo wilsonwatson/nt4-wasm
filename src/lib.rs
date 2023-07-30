@@ -490,6 +490,12 @@ pub fn publish(name: &str, ty: &str) -> i64 {
     uid
 }
 
+fn send_data_serde<T : Serialize>(pubid: i64, ty: String, obj: T) {
+    let v: rmpv::Value = rmp_serde::from_slice(&rmp_serde::to_vec(&obj).unwrap()).unwrap();
+    send_binary_fill(pubid, ty, v).unwrap();
+}
+
+#[allow(dead_code)]
 fn send_data(pubid: i64, ty: String, obj: JsValue) {
     let v: rmpv::Value = serde_wasm_bindgen::from_value(obj).unwrap();
     send_binary_fill(pubid, ty, v).unwrap();
@@ -568,11 +574,22 @@ fn infill_pub(node: &HtmlElement, topic: String, ty: String) {
             let a = Closure::<dyn Fn()>::new(move || match ty.as_str() {
                 "string" => {
                     let data = ncopy.value();
-                    send_data(id, ty.clone(), JsValue::from_str(&data));
+                    send_data_serde(id, ty.clone(), data);
                 }
-                "float" | "double" | "int" => {
-                    let data = ncopy.value_as_number();
-                    send_data(id, ty.clone(), JsValue::from_f64(data));
+                "double" => {
+                    if let Ok(data) = ncopy.value().parse::<f64>() {
+                        send_data_serde(id, ty.clone(), data);
+                    }
+                }
+                "float" => {
+                    if let Ok(data) = ncopy.value().parse::<f32>() {
+                        send_data_serde(id, ty.clone(), data);
+                    }
+                }
+                "int" => {
+                    if let Ok(data) = ncopy.value().parse::<i64>() {
+                        send_data_serde(id, ty.clone(), data);
+                    }
                 }
                 _ => {}
             });

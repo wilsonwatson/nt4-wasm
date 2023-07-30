@@ -1,0 +1,55 @@
+
+plugins {
+    id 'java-library'
+    id "edu.wpi.first.GradleRIO" version "2023.4.3"
+    id 'maven-publish'
+}
+
+repositories {
+    mavenCentral()
+}
+
+
+sourceCompatibility = JavaVersion.VERSION_11
+targetCompatibility = JavaVersion.VERSION_11
+
+dependencies {
+    implementation wpi.java.deps.wpilib()
+    // implementation wpi.java.vendor.java()
+
+    implementation "io.javalin:javalin:5.6.1"
+}
+
+task buildWasm(type: Exec) {
+    workingDir '.'
+    commandLine 'wasm-pack', 'build', '--target', 'no-modules'
+
+    doLast {
+        def toConcatenate = files("pkg/nt4_wasm.js", "src/next_part.js");
+        def outputFileName = "pkg/nt4.js"
+        def output = new File(outputFileName)
+        output.write('') // clear
+        toConcatenate.each { f -> output << f.text }
+    }
+}
+
+tasks.jar.dependsOn(buildWasm)
+
+jar {
+    from('pkg') {
+        include('nt4_wasm_bg.wasm')
+        include('nt4.js')
+    }
+}
+
+publishing {
+    publications {
+        maven(MavenPublication) {
+            groupId = 'org.frc5572.nt4wasm'
+            artifactId = 'nt4wasm'
+            version = '0.1'
+
+            from components.java
+        }
+    }
+}

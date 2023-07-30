@@ -9,3 +9,6 @@ Requires: [`wasm-pack`](https://rustwasm.github.io/wasm-pack/installer/)
 ```
 wasm-pack build --target no-modules
 ```
+
+## Using `nt4-wasm`
+
