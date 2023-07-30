@@ -12,11 +12,12 @@ repositories {
 
 def version_major = 0
 def version_minor = 1
+def version_patch = Integer.parseInt((System.getenv('PATCH') == null ? "0" : System.getenv('PATCH')))
 
 def user = "wilsonwatson"
 def group = "org." + user
 def artifact = System.getenv('PATCH') == null ? "nt4wasm" : "nt4wasm_bleeding_edge"
-def version_str = version_major + "." + version_minor + "." + (System.getenv('PATCH') == null ? "0" : System.getenv('PATCH'))
+def version_str = version_major + "." + version_minor + "." + version_patch
 
 task check_minor_bump {
     doLast {
@@ -36,10 +37,13 @@ task check_minor_bump {
                 def parts = item.name.split("\\.");
                 def item_major = Integer.parseInt(parts[0])
                 def item_minor = Integer.parseInt(parts[1]);
+                def item_patch = Integer.parseInt(parts[2]);
                 if (item_major > version_major) {
                     throw new GradleException("Need to bump up major version to >= ${item_major}!")
-                } else if (item_major == version_major && item_minor >= version_minor) {
-                    throw new GradleException("Need to bump up minor version to > ${item_minor}!")
+                } else if (item_major == version_major && item_minor > version_minor) {
+                    throw new GradleException("Need to bump up minor version to >= ${item_minor}!")
+                } else if (item_major == version_major && item_minor == version_minor && item_patch >= version_patch) {
+                    throw new GradleException("Need to bump up patch version to >= ${item_patch}!")
                 }
             }
             logger.quiet "Response: ${resp}"
