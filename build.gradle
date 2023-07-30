@@ -53,10 +53,7 @@ java {
     withSourcesJar()
 }
 
-task printVersion {
-    println "building \"" + group + ":" + artifact + ":" + version_str + "\""
-    dependsOn(buildWasm)
-}
+println "building \"" + group + ":" + artifact + ":" + version_str + "\""
 
 publishing {
     publications {
@@ -80,5 +77,3 @@ publishing {
         }
     }
 }
-
-tasks.publishMavenPublicationToGithubPackagesRepository.dependsOn(printVersion)
