@@ -5,18 +5,12 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Document</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <table>
-        <thead>
-            <td><strong>Enabled</strong></td>
-            <td><strong>Path</strong></td>
-            <td><strong>Value</strong></td>
-        </thead>
-        <tbody id="tabl">
-            
-        </tbody>
-    </table>
+    <p>/Shuffleboard/Main Driver/Photon Good: <span subscribe="/Shuffleboard/Main Driver/Photon Good"></span></p>
+    <p>/Shuffleboard/Auto/Column: <span subscribe="/Shuffleboard/Auto/Column/active"></span></p>
+    <p>/Test: <input publish="/Test" publish_type="string"></input></p>
     <script src="pkg/nt4_wasm.js"></script>
     <script>
         async function run(name, ip) {
@@ -25,41 +19,7 @@
             await _nt4_start(name, ip);
         }
 
-        var items = {};
-
-        run("webwoo", "localhost").then(() => {
-            const { sub_topic_list, addEventListener, publish, unpublish, subscribe, unsubscribe } = wasm_bindgen;
-            let tabl = document.getElementById("tabl");
-            addEventListener("announce", (name, type) => {
-                console.log(name);
-                let tr = document.createElement("tr");
-                let td1 = document.createElement("td");
-                let td2 = document.createElement("td");
-                let td3 = document.createElement("td");
-                let input = document.createElement("input");
-                input.setAttribute("type", "checkbox");
-                input.id = "name";
-                let span = document.createElement("span");
-                input.addEventListener("click", () => {
-                    if(input.checked) {
-                        items[name] = subscribe(name, (value) => {
-                            console.log(name + " updated");
-                            span.innerText = String(value);
-                        });
-                    } else {
-                        unsubscribe(items[name]);
-                    }
-                });
-                td1.appendChild(input);
-                td2.appendChild(new Text(name));
-                td3.appendChild(span);
-                tr.appendChild(td1);
-                tr.appendChild(td2);
-                tr.appendChild(td3);
-                tabl.appendChild(tr);
-            });
-            sub_topic_list("/");
-        });
+        run("webwoo2", "localhost");
     </script>
 </body>
 </html>
