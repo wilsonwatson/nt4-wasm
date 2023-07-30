@@ -45,11 +45,22 @@ jar {
 publishing {
     publications {
         maven(MavenPublication) {
-            groupId = 'org.frc5572.nt4wasm'
+            groupId = 'org.wilsonwatson.nt4wasm'
             artifactId = 'nt4wasm'
             version = '0.1'
 
             from components.java
+        }
+    }
+
+    repositories {
+        maven {
+            name = "GithubPackages"
+            url = "https://maven.pkg.github.com/wilsonwatson/nt4-wasm"
+            credentials {
+                username = System.getenv("GITHUB_ACTOR")
+                password = System.getenv("GITHUB_TOKEN")
+            }
         }
     }
 }
