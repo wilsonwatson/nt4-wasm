@@ -16,39 +16,8 @@ def version_patch = Integer.parseInt((System.getenv('PATCH') == null ? "0" : Sys
 
 def user = "wilsonwatson"
 def group = "org." + user
-def artifact = System.getenv('PATCH') == null ? "nt4wasm" : "nt4wasm_bleeding_edge"
+def artifact = "nt4wasm"
 def version_str = version_major + "." + version_minor + "." + version_patch
-
-task check_minor_bump {
-    doLast {
-        if (System.getenv("GITHUB_TOKEN") != null) {
-            // check if version_minor is bumped
-            def req = new URL("https://api.github.com/users/" + user + "/packages/maven/" + group + "." + artifact + "/versions").openConnection()
-            req.setRequestMethod("GET")
-            req.setRequestProperty("Content-Type", "application/vnd.github+json")
-            req.setRequestProperty("Authorization", "Bearer " + System.getenv("GITHUB_TOKEN"))
-            req.setRequestProperty("X-GitHub-Api-Version", "2022-11-28")
-            req.setDoOutput(true)
-            def resp = new JsonSlurper().parseText(req.getInputStream().getText())
-            resp.each { item -> 
-                def parts = item.name.split("\\.");
-                if(parts.length < 3) {
-                    return;
-                }
-                def item_major = Integer.parseInt(parts[0])
-                def item_minor = Integer.parseInt(parts[1]);
-                def item_patch = Integer.parseInt(parts[2]);
-                if (item_major > version_major) {
-                    throw new GradleException("Need to bump up major version to >= ${item_major}! ${item.name} is newer")
-                } else if (item_major == version_major && item_minor > version_minor) {
-                    throw new GradleException("Need to bump up minor version to >= ${item_minor}! ${item.name} is newer")
-                } else if (item_major == version_major && item_minor == version_minor && version_patch == 0) { // is release
-                    throw new GradleException("Need to bump up minor version to ${item_minor + 1}! ${item.name} is equivalent")
-                }
-            }
-        }
-    }
-}
 
 sourceCompatibility = JavaVersion.VERSION_11
 targetCompatibility = JavaVersion.VERSION_11
@@ -62,15 +31,7 @@ dependencies {
 
 task buildWasm(type: Exec) {
     workingDir '.'
-    commandLine 'wasm-pack', 'build', '--target', 'no-modules'
-
-    doLast {
-        def toConcatenate = files("pkg/nt4_wasm.js", "src/next_part.js");
-        def outputFileName = "pkg/nt4.js"
-        def output = new File(outputFileName)
-        output.write('') // clear
-        toConcatenate.each { f -> output << f.text }
-    }
+    commandLine 'wasm-pack', 'build', '--target', 'web'
 }
 
 tasks.jar.dependsOn(buildWasm)
@@ -78,7 +39,7 @@ tasks.jar.dependsOn(buildWasm)
 jar {
     from('pkg') {
         include('nt4_wasm_bg.wasm')
-        include('nt4.js')
+        include('nt4_wasm.js')
     }
 }
 
