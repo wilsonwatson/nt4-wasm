@@ -1,4 +1,4 @@
-name: Release Packaging
+name: Check Build Status
 
 on:
     workflow_dispatch:
@@ -6,7 +6,7 @@ on:
 
 jobs:
     main:
-        name: Release
+        name: Builds
         runs-on: ubuntu-22.04
         steps:
             - name: "Checkout Repository"
