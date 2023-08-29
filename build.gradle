@@ -30,6 +30,18 @@ dependencies {
 }
 
 task buildWasm(type: Exec) {
+    onlyIf {
+        try {
+            def result = exec {
+                ignoreExitValue = true
+                commandLine 'wasm-pack', '--version'
+            }
+            return true
+        } catch(Exception e) {
+            return false
+        }
+    }
+
     workingDir '.'
     commandLine 'wasm-pack', 'build', '--target', 'web'
 }
