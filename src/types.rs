@@ -21,6 +21,14 @@ macro_rules! nt4_type {
                     x => Err(format!("Unrecognized type id: {}", x))
                 }
             }
+            pub fn from_name(name: &str) -> Result<Self, String> {
+                match name {
+                    $(
+                        $str => Ok(Self::$name),
+                    )*
+                    x => Err(format!("Unrecognized type: {:?}", x))
+                }
+            }
 
             pub fn get_id(&self) -> u8 {
                 match self {
