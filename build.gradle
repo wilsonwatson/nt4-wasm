@@ -11,8 +11,8 @@ repositories {
 }
 
 def version_major = 0
-def version_minor = 2
-def version_patch = Integer.parseInt((System.getenv('PATCH') == null ? "0" : System.getenv('PATCH')))
+def version_minor = 3
+def version_patch = 0
 
 def user = "wilsonwatson"
 def group = "org." + user
