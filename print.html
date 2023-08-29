@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <script type="module">
+        import init, { Nt4Connection } from './pkg/nt4wasm2.js'
+
+        init().then(() => {
+            let x = new Nt4Connection();
+            x.set_send_binary_fn((data) => {
+                console.log(data);
+            });
+            x.set_send_text_fn((data) => {
+                console.log(data);
+            });
+            x.send_data(0, 0.4);
+            x.subscribe("/shuffleboard/test", { all: true, prefix: true, topicsonly: true });
+        })
+    </script>
+</body>
+</html>
