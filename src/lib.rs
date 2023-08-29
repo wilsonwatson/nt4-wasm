@@ -8,6 +8,7 @@ mod binary;
 mod text;
 mod types;
 mod instant;
+mod log;
 
 use text::*;
 use types::*;
@@ -259,6 +260,8 @@ impl Nt4Connection {
         } }
     }
 }
+
+
 
 #[wasm_bindgen(start)]
 pub fn run() {
